@@ -1,4 +1,4 @@
-![rp2040](https://github.com/Stone-Time/HdmiSwitch/edit/main/Docs/Pasted image 20230926121630.png)
+![rp2040](https://github.com/Stone-Time/HdmiSwitch/edit/main/Docs/Pinout.png)
 
 GPIO2   - HDMI 1 - LED 1
 
