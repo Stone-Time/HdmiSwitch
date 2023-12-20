@@ -1,0 +1,515 @@
+#### Grundeinstellungen
+esphome:
+  name: buero-pc-switch
+  friendly_name: "Büro PC Switcher"
+  on_boot:
+    then:
+      # Reset aller Daten
+      - lambda: |-
+          id(changeneeded) = false;
+          id(force_usb_change) = false;
+          id(currentselectedusb) = 1;
+          id(currentselectedport) = 1;
+          id(hdmiswitch_1_0).turn_off();
+          id(hdmiswitch_2_0).turn_off();
+          id(hdmiswitch_3_0).turn_off();
+      - script.execute: switch_pc_port_check
+      - script.wait: switch_pc_port_check
+      - lambda: |-
+          auto callLight = id(led_strip).turn_on();
+          callLight.set_effect("SHOWSTATE");
+          callLight.perform();
+
+rp2040:
+  board: rpipicow
+  framework:
+    # Required until https://github.com/platformio/platform-raspberrypi/pull/36 is merged
+    platform_version: https://github.com/maxgerhardt/platform-raspberrypi.git
+
+#### WIFI Einstellungen
+wifi:
+  power_save_mode: none
+  reboot_timeout: 0s
+  networks:
+    - ssid: !secret wifi_ssid
+      password: !secret wifi_password
+  ap:
+    ssid: "${name}"
+    password: !secret wifi_password
+
+
+### API Zugang
+api:
+  encryption:
+    key: !secret api_encryption_key
+
+### OTA (Over the air updates)
+ota:
+  password: !secret ota_pwd
+
+### Logger aktivieren
+logger:
+  level: DEBUG
+
+#### Config
+i2c:
+  ### I2C0 muss intialisiert werden, da sonst nicht I2C1 geht https://github.com/esphome/feature-requests/issues/2083
+  - id: bus_a
+    sda: GPIO16
+    scl: GPIO17
+  - id: bus_b
+    sda: GPIO26
+    scl: GPIO27
+    frequency: 800kHz
+
+globals:
+  - id: currentselectedport
+    type: int
+    restore_value: no
+    initial_value: '1'
+  - id: currentselectedusb
+    type: int
+    restore_value: no
+    initial_value: '1'
+  - id: changeneeded
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  - id: force_usb_change
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  - id: scriptdelay
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+
+font:
+  - file: 'arial.ttf'
+    id: font1
+    size: 10
+  - file: 'arial.ttf'
+    id: font2
+    size: 20
+
+display:
+  - platform: ssd1306_i2c
+    i2c_id: bus_b
+    model: "SSD1306 128x32"
+    address: 0x3C
+    lambda: |-
+      it.print(1, 0, id(font1), "M1  M2  M3");
+      it.rectangle( 1, 11, 14, 7);
+      it.rectangle( 1, 18, 14, 7);
+      it.rectangle( 1, 25, 14, 7);
+      it.rectangle(22, 11, 14, 7);
+      it.rectangle(22, 18, 14, 7);
+      it.rectangle(22, 25, 14, 7);
+      it.rectangle(43, 11, 14, 7);
+      it.rectangle(43, 18, 14, 7);
+      it.rectangle(43, 25, 14, 7);
+      if (id(hdmiswitch_1_1).state == 1) {
+        it.filled_rectangle( 1, 11, 14, 7);
+      }
+      else if (id(hdmiswitch_1_2).state == 1) {
+        it.filled_rectangle( 1, 18, 14, 7);
+      }
+      else if (id(hdmiswitch_1_3).state == 1) {
+        it.filled_rectangle( 1, 25, 14, 7);
+      }
+      if (id(hdmiswitch_2_1).state == 1) {
+        it.filled_rectangle(22, 11, 14, 7);
+      }
+      else if (id(hdmiswitch_2_2).state == 1) {
+        it.filled_rectangle(22, 18, 14, 7);
+      }
+      else if (id(hdmiswitch_2_3).state == 1) {
+        it.filled_rectangle(22, 25, 14, 7);
+      }
+      if (id(hdmiswitch_3_1).state == 1) {
+        it.filled_rectangle(43, 11, 14, 7);
+      }
+      else if (id(hdmiswitch_3_2).state == 1) {
+        it.filled_rectangle(43, 18, 14, 7);
+      }
+      else if (id(hdmiswitch_3_3).state == 1) {
+        it.filled_rectangle(43, 25, 14, 7);
+      }
+
+      it.rectangle(62, 0, 66, 32);
+      if (id(currentselectedport) == 1) {
+        it.print(69, 4, id(font2), "Arbeit");
+      } else if (id(currentselectedport) == 2) {
+        it.print(68, 4, id(font2), "Privat");
+      } else if (id(currentselectedport) == 3) {
+        it.print(75, 4, id(font2), "Mac");
+      } else {
+        it.print(80, 3, id(font2), "----");
+      }
+
+light:
+  - platform: rp2040_pio_led_strip
+    name: led_strip
+    id: led_strip
+    pin: GPIO14
+    num_leds: 3
+    pio: 0
+    rgb_order: GRB
+    chipset: WS2812B
+    restore_mode: ALWAYS_ON
+    effects:
+      - addressable_lambda:
+          name: "SHOWSTATE"
+          update_interval: 50ms
+          lambda: |-
+            it.all() = Color::BLACK;
+            if (id(currentselectedport) == 1) {
+              it[0] = Color(0, 0, 120, 0);
+            } else if (id(currentselectedport) == 2) {
+              it[1] = Color(0, 0, 120, 0);
+            } else if (id(currentselectedport) == 3) {
+              it[2] = Color(0, 0, 120, 0);
+            } else {
+              it[0] = Color(120, 0, 0, 0);
+              it[1] = Color(120, 0, 0, 0);
+              it[2] = Color(120, 0, 0, 0);
+            }
+
+binary_sensor:
+  - platform: gpio
+    name: "HDMI1-1"
+    id: hdmiswitch_1_1
+    internal: true
+    pin:
+      number: GPIO2
+      inverted: false
+  - platform: gpio
+    name: "HDMI1-2"
+    id: hdmiswitch_1_2
+    internal: true
+    pin:
+      number: GPIO3
+      inverted: false
+  - platform: gpio
+    name: "HDMI1-3"
+    id: hdmiswitch_1_3
+    internal: true
+    pin:
+      number: GPIO4
+      inverted: false
+  - platform: gpio
+    name: "HDMI2-1"
+    id: hdmiswitch_2_1
+    internal: true
+    pin:
+      number: GPIO6
+      inverted: false
+  - platform: gpio
+    name: "HDMI2-2"
+    id: hdmiswitch_2_2
+    internal: true
+    pin:
+      number: GPIO7
+      inverted: false
+  - platform: gpio
+    name: "HDMI2-3"
+    id: hdmiswitch_2_3
+    internal: true
+    pin:
+      number: GPIO8
+      inverted: false
+  - platform: gpio
+    name: "HDMI3-1"
+    id: hdmiswitch_3_1
+    internal: true
+    pin:
+      number: GPIO10
+      inverted: false
+  - platform: gpio
+    name: "HDMI3-2"
+    id: hdmiswitch_3_2
+    internal: true
+    pin:
+      number: GPIO11
+      inverted: false
+  - platform: gpio
+    name: "HDMI3-3"
+    id: hdmiswitch_3_3
+    internal: true
+    pin:
+      number: GPIO12
+      inverted: false
+  - platform: gpio
+    name: "Button PC 1"
+    id: button1
+    pin:
+      number: GPIO15
+      inverted: true
+      mode:
+        input: true
+        pullup: true
+    on_release:
+      then:
+        - script.execute: switch_pc_port_check
+        - script.wait: switch_pc_port_check
+        - lambda: |-
+            if (id(currentselectedport) != 1) {
+              id(currentselectedport) = 1;
+              id(changeneeded) = true;
+            }
+        - if:
+            condition:
+              and:
+                - not:
+                  - script.is_running: switch_pc
+                - lambda: 'return id(changeneeded);'
+            then:
+              - script.execute: switch_pc
+              - script.wait: switch_pc
+        # Wir provozieren hier IMMER den richtigen USB PORT zu wählen
+        - lambda: |-
+            id(force_usb_change) = true;
+            id(usbswitch_1).turn_on();
+        - script.execute: switch_pc_port_usb
+        - script.wait: switch_pc_port_usb
+  - platform: gpio
+    name: "Button PC 2"
+    id: button2
+    pin:
+      number: GPIO16
+      inverted: true
+      mode:
+        input: true
+        pullup: true
+    on_release:
+      then:
+        - script.execute: switch_pc_port_check
+        - script.wait: switch_pc_port_check
+        - lambda: |-
+            if (id(currentselectedport) != 2) {
+              id(currentselectedport) = 2;
+              id(changeneeded) = true;
+            }
+        - if:
+            condition:
+              and:
+                - not:
+                  - script.is_running: switch_pc
+                - lambda: 'return id(changeneeded);'
+            then:
+              - script.execute: switch_pc
+              - script.wait: switch_pc
+        # Wir provozieren hier IMMER den richtigen USB PORT zu wählen
+        - lambda: |-
+            id(force_usb_change) = true;
+        - script.execute: switch_pc_port_usb
+        - script.wait: switch_pc_port_usb
+  - platform: gpio
+    name: "Button PC 3"
+    id: button3
+    pin:
+      number: GPIO17
+      inverted: true
+      mode:
+        input: true
+        pullup: true
+    on_release:
+      then:
+        - script.execute: switch_pc_port_check
+        - script.wait: switch_pc_port_check
+        - lambda: |-
+            if (id(currentselectedport) != 3) {
+              id(currentselectedport) = 3;
+              id(changeneeded) = true;
+            }
+        - if:
+            condition:
+              and:
+                - not:
+                  - script.is_running: switch_pc
+                - lambda: 'return id(changeneeded);'
+            then:
+              - script.execute: switch_pc
+              - script.wait: switch_pc
+        # Wir provozieren hier IMMER den richtigen USB PORT zu wählen
+        - lambda: |-
+            id(force_usb_change) = true;
+        - script.execute: switch_pc_port_usb
+        - script.wait: switch_pc_port_usb
+
+output:
+  - platform: gpio
+    id: hdmiswitch_1_0
+    pin: GPIO5
+    inverted: true
+  - platform: gpio
+    id: hdmiswitch_2_0
+    pin: GPIO9
+    inverted: true
+  - platform: gpio
+    id: hdmiswitch_3_0
+    pin: GPIO13
+    inverted: true
+  - platform: gpio
+    id: usbswitch_1
+    pin: GPIO19
+    inverted: true
+  - platform: gpio
+    id: usbswitch_2
+    pin: GPIO20
+    inverted: true
+  - platform: gpio
+    id: usbswitch_3
+    pin: GPIO18
+    inverted: true
+
+script:
+  - id: switch_pc
+    then:
+      # Alles ausschalten
+      - lambda: |-
+          id(usbswitch_1).turn_off();
+          id(usbswitch_2).turn_off();
+          id(usbswitch_3).turn_off();
+          id(hdmiswitch_1_0).turn_off();
+          id(hdmiswitch_2_0).turn_off();
+          id(hdmiswitch_3_0).turn_off();
+      - delay: 100ms
+      # haben wir was zutun?
+      - if:
+          condition:
+            lambda: 'return id(changeneeded);'
+          then:
+            # Wir machen ja nun die Änderungen
+            - lambda: |-
+                id(changeneeded) = false;
+            - script.execute: switch_pc_hdmi_loop
+            - script.wait: switch_pc_hdmi_loop
+            - script.execute: switch_pc_port_check
+            - script.wait: switch_pc_port_check
+            - script.execute: switch_pc_port_usb
+            - script.wait: switch_pc_port_usb            
+            # Alles aus an dieser Stelle
+            - lambda: |-
+                id(hdmiswitch_1_0).turn_off();
+                id(hdmiswitch_2_0).turn_off();
+                id(hdmiswitch_3_0).turn_off();
+            - lambda: |-
+                auto callLight = id(led_strip).turn_on();
+                callLight.set_effect("SHOWSTATE");
+                callLight.perform();
+            - lambda: |-
+                ESP_LOGD("switch_pc", "ALL DONE");
+
+  # Toggle HDMI1, 2 und 3 - 3 Runden
+  - id: switch_pc_hdmi_loop
+    then:
+      - delay: 100ms
+      - repeat:
+          count: 3
+          then:
+            - lambda: |-
+                id(scriptdelay) = false;
+                if (((id(currentselectedport) == 1) && (id(hdmiswitch_1_1).state != 1)) || ((id(currentselectedport) == 2) && (id(hdmiswitch_1_2).state != 1)) || ((id(currentselectedport) == 3) && (id(hdmiswitch_1_3).state != 1))) {
+                  id(hdmiswitch_1_0).turn_on();
+                  id(scriptdelay) = true;
+                  ESP_LOGD("switch_pc", "HDMI SWITCH 1 TOGGLE");
+                }
+                if (((id(currentselectedport) == 1) && (id(hdmiswitch_2_1).state != 1)) || ((id(currentselectedport) == 2) && (id(hdmiswitch_2_2).state != 1)) || ((id(currentselectedport) == 3) && (id(hdmiswitch_2_3).state != 1))) {
+                  id(hdmiswitch_2_0).turn_on();
+                  id(scriptdelay) = true;
+                  ESP_LOGD("switch_pc", "HDMI SWITCH 2 TOGGLE");
+                }
+                if (((id(currentselectedport) == 1) && (id(hdmiswitch_3_1).state != 1)) || ((id(currentselectedport) == 2) && (id(hdmiswitch_3_2).state != 1)) || ((id(currentselectedport) == 3) && (id(hdmiswitch_3_3).state != 1))) {
+                  id(hdmiswitch_3_0).turn_on();
+                  id(scriptdelay) = true;
+                  ESP_LOGD("switch_pc", "HDMI SWITCH 3 TOGGLE");
+                }
+            - if:
+                condition:
+                  lambda: 'return id(scriptdelay) == true;'
+                then:
+                  - delay: 200ms
+            - lambda: |-
+                id(scriptdelay) = false;
+                id(hdmiswitch_1_0).turn_off();
+                id(hdmiswitch_2_0).turn_off();
+                id(hdmiswitch_3_0).turn_off();
+                ESP_LOGD("switch_pc", "HDMI SWITCH BUTTONS OFF");
+
+  # Setze die richtigen Daten
+  - id: switch_pc_port_check
+    then:
+      - lambda: |-
+          auto select1 = 0;
+          auto select2 = 0;
+          auto select3 = 0;
+          if (id(hdmiswitch_1_1).state == 1) {
+            select1 = select1 + 1;
+          }
+          if (id(hdmiswitch_1_2).state == 1) {
+            select2 = select2 + 1;
+          }
+          if (id(hdmiswitch_1_3).state == 1) {
+            select3 = select3 + 1;
+          }
+          if (id(hdmiswitch_2_1).state == 1) {
+            select1 = select1 + 1;
+          }
+          if (id(hdmiswitch_2_2).state == 1) {
+            select2 = select2 + 1;
+          }
+          if (id(hdmiswitch_2_3).state == 1) {
+            select3 = select3 + 1;
+          }
+          if (id(hdmiswitch_3_1).state == 1) {
+            select1 = select1 + 1;
+          }
+          if (id(hdmiswitch_3_2).state == 1) {
+            select2 = select2 + 1;
+          }
+          if (id(hdmiswitch_3_3).state == 1) {
+            select3 = select3 + 1;
+          }
+
+          if ((select2 > select1) && (select2 > select3)) {
+            id(currentselectedport) = 2;
+            ESP_LOGD("switch_pc", "SELECTED PORT = 2");
+          } else if ((select3 > select1) && (select3 > select2)) {
+            id(currentselectedport) = 3;
+            ESP_LOGD("switch_pc", "SELECTED PORT = 3");
+          } else {
+            id(currentselectedport) = 1;
+            ESP_LOGD("switch_pc", "SELECTED PORT = 1");
+          }
+  # Setze den USB Port
+  - id: switch_pc_port_usb
+    then:
+      - lambda: |-
+          id(scriptdelay) = false;
+          if ((id(currentselectedusb) != id(currentselectedport)) || id(force_usb_change)) {
+            id(scriptdelay) = true;
+            if (id(currentselectedport) == 1) {
+              id(usbswitch_1).turn_on();
+              ESP_LOGD("switch_pc", "SWITCH USB PORT TO 1");
+            }
+            else if (id(currentselectedport) == 2) {
+              id(usbswitch_2).turn_on();
+              ESP_LOGD("switch_pc", "SWITCH USB PORT TO 2");
+            }
+            else if (id(currentselectedport) == 3) {
+              id(usbswitch_3).turn_on();
+              ESP_LOGD("switch_pc", "SWITCH USB PORT TO 3");
+            }
+          }
+      - if:
+          condition:
+            lambda: 'return id(scriptdelay) == true;'
+          then:
+            - delay: 200ms
+      # Alles aus an dieser Stelle
+      - lambda: |-
+          id(usbswitch_1).turn_off();
+          id(usbswitch_2).turn_off();
+          id(usbswitch_3).turn_off();
+          id(force_usb_change) = false;
