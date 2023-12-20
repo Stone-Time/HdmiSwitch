@@ -2,8 +2,11 @@
 ![[Pasted image 20230926121630.png]]
 
 GPIO2   - HDMI 1 - LED 1
+
 GPIO3   - HDMI 1 - LED 2
+
 GPIO4   - HDMI 1 - LED 3
+
 GPIO5   - HDMI 1 - SWITCH
 
 GPIO6   - HDMI 2 - LED 1
